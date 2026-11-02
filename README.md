@@ -4,7 +4,7 @@ A small starting point for making a game that boots directly from one disk image
 
 ## Build on GitHub (no local build required)
 
-The **Build bootable image** GitHub Actions workflow runs on pushes and pull requests, or manually from the **Actions** tab. Each successful run produces exactly two artifacts: `GameOnBareMetal-IMG` (containing `game.img`) and `GameOnBareMetal-ISO` (containing `game.iso`). Both boot the same game hub; the triangle demo is tested but not published as a third artifact. GitHub Actions must be enabled for the repository. The downloads are ZIPs created by GitHub Actions; extract the image before booting it.
+The **Build bootable image** GitHub Actions workflow runs on pushes and pull requests, or manually from the **Actions** tab. Each successful run produces exactly two artifacts: `GameOnBareMetal-IMG` (containing `game.img` and its SHA-256 checksum) and `GameOnBareMetal-ISO` (containing `game.iso` and its SHA-256 checksum). Both boot the same game hub; the triangle demo is tested but not published as a third artifact. GitHub Actions must be enabled for the repository. The downloads are ZIPs created by GitHub Actions; extract the image before booting it.
 
 ## Build and run locally
 
@@ -15,7 +15,23 @@ make test              # builds build/game.img and checks its layout
 make run               # boots it as a floppy in qemu-system-i386
 ```
 
-`build/game.img` is the complete, raw 1.44 MB floppy image. Run `make iso` (requires `xorriso`) to also create `build/game.iso`, a BIOS El Torito floppy-emulation CD image containing that same boot image. For other emulators, select a **legacy BIOS** machine and attach the IMG as a floppy or the ISO as a CD. Neither is a UEFI boot image or an installer for a hard drive; don't write it to a physical disk unless you understand that doing so destroys its contents. The image has no filesystem: the game is built into the kernel, not loaded from a separate file.
+`build/game.img` is the complete, raw 1.44 MB floppy image. Run `make iso` (requires `xorriso`) to also create `build/game.iso`, a BIOS El Torito floppy-emulation CD image containing that same boot image. For other emulators, select a **legacy BIOS** machine and attach the IMG as a floppy or IDE hard disk, or attach the ISO as a CD. Hard-disk boot requires BIOS INT 13h extensions. Neither is a UEFI boot image or an installer for a hard drive; don't write it to a physical disk unless you understand that doing so destroys its contents. The image has no filesystem: the game is built into the kernel, not loaded from a separate file.
+
+### QEMU on Windows
+
+After extracting the IMG artifact, the current image supports the default IDE attachment used by:
+
+```powershell
+qemu-system-x86_64 -drive format=raw,file=game.img -m 4096 -accel whpx
+```
+
+WHPX must be available and enabled in Windows. If it is not, omit `-accel whpx` to use software emulation. Older images only support floppy attachment, which also works with the current image:
+
+```powershell
+qemu-system-x86_64 -drive format=raw,file=game.img,if=floppy -boot a -m 4096 -accel whpx
+```
+
+A browser or antivirus may warn about unfamiliar disk images; the specific reason depends on its warning. Download only from a trusted Actions run and review the warning rather than disabling protection. To check for download corruption in PowerShell, compare `(Get-FileHash game.iso -Algorithm SHA256).Hash` with the value in `game.iso.sha256`. The checksum is published alongside the image and is **not a signature**; it does not prove the image is safe or independently authenticate its source.
 
 ## Make a game
 
@@ -59,7 +75,7 @@ python3 tools/gmstg.py put gammie-storage.img build/game.cxg.meta
 qemu-system-i386 -drive file=build/game.img,format=raw,if=floppy -drive file=gammie-storage.img,format=raw,if=ide,index=0
 ```
 
-In the hub choose **Play → Launch game.cxg.meta**. Attach the storage as primary IDE master; the loader finds that exact filename, decompresses the executable into RAM, checks its CRC32, and calls it. The sample returns after Enter. The package is not automatically installed on the disk, and the hub can currently select only this one fixed package name. Actions boot-tests an example, but the two hub image artifacts do not include a storage disk or sample package.
+In the hub choose **Play → Launch game.cxg.meta**. Attach the storage as primary IDE master or slave; the loader finds that exact filename, decompresses the executable into RAM, checks its CRC32, and calls it. The sample returns after Enter. The package is not automatically installed on the disk, and the hub can currently select only this one fixed package name. Actions boot-tests an example, but the two hub image artifacts do not include a storage disk or sample package.
 
 Creators can package their own fixed-address executable and optional folders:
 
@@ -82,7 +98,7 @@ python3 tools/gmstg.py put gammie-storage.img path/to/your.wad --name doom.wad
 python3 tools/gmstg.py list gammie-storage.img
 ```
 
-The image must be raw, exactly 16 GiB, and attached to the **primary IDE master** to use `gmstg_find(0, ...)`. A game can use `gmstg_read_sector` to access its file data; see `include/gmstg.h` and `tests/storage_boot.c`. For example, with QEMU add `-drive file=gammie-storage.img,format=raw,if=ide,index=0` alongside the boot floppy or CD. Keep backups: the format has no journaling or crash recovery. Only add data you have the right to use; no Doom WAD is included. Individual files are limited to 4 GiB minus one byte.
+The image must be raw, exactly 16 GiB, and attached to the **primary IDE master or slave**. Use `gmstg_find(0, ...)` for master or `gmstg_find(1, ...)` for slave. If the boot IMG is attached as an IDE hard disk, attach the Gm-Stg16 disk as the primary IDE slave (QEMU `if=ide,index=1`); the hub checks both. A game can use `gmstg_read_sector` to access its file data; see `include/gmstg.h` and `tests/storage_boot.c`. For example, with QEMU add `-drive file=gammie-storage.img,format=raw,if=ide,index=0` alongside the boot floppy or CD. Keep backups: the format has no journaling or crash recovery. Only add data you have the right to use; no Doom WAD is included. Individual files are limited to 4 GiB minus one byte.
 
 The old 4 GiB GmStg-4098 format is not directly compatible. To migrate it without changing the original, use `python3 tools/gmstg.py migrate old.img new-16g.img`. The destination must not already exist; the tool copies named files into a new sparse disk. Keep the original until you have checked the migrated copy. A failed migration may leave an incomplete destination that should not be used.
 

@@ -13,7 +13,9 @@ static void say(const char *s) { while (*s) __asm__ volatile ("outb %0, $0xe9" :
 void game_main(void) {
     gmstg_file file;
     cxg_api api={1,clear,put,write_text,keyboard};
-    if (gmstg_find(0,"game.cxg.meta",&file) || cxg_load(0,&file,(uint8_t *)CXG_LOAD_ADDRESS,CXG_MAX_CODE)) {
+    int drive = !gmstg_find(0,"game.cxg.meta",&file) ? 0 :
+                !gmstg_find(1,"game.cxg.meta",&file) ? 1 : -1;
+    if (drive < 0 || cxg_load(drive,&file,(uint8_t *)CXG_LOAD_ADDRESS,CXG_MAX_CODE)) {
         say("CXG FAIL\n");
     } else {
         ((cxg_entry)CXG_LOAD_ADDRESS)(&api);

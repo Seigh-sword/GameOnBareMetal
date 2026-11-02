@@ -6,6 +6,11 @@
 
 static int cxg_status;
 static unsigned high_contrast;
+static int find_game_file(const char *name, gmstg_file *file) {
+    for (int drive = 0; drive <= 1; ++drive)
+        if (!gmstg_find(drive, name, file)) return drive;
+    return -1;
+}
 static uint8_t text_color(uint8_t normal) {
     return high_contrast ? (normal == 0x0e ? 0x1f : 0x70) : normal;
 }
@@ -31,7 +36,7 @@ static void render(const hub_state *s) {
         title("Play");
         option(8, "Doom  [not installed]", s->selected == 0);
         option(10, "Launch game.cxg.meta", s->selected == 1);
-        screen_write(8, 13, "Package must be on primary IDE Gm-Stg16 disk.", text_color(0x07));
+        screen_write(8, 13, "Package must be on a primary IDE Gm-Stg16 disk.", text_color(0x07));
     } else if (s->page == HUB_SETTINGS) {
         title("Settings");
         screen_write(8, 8, "Display: 80 x 25 text (fixed)", text_color(0x0f));
@@ -48,9 +53,9 @@ static void render(const hub_state *s) {
         screen_write(8, 10, "Press Esc to return.", text_color(0x07));
     } else {
         gmstg_file f;
-        int found = gmstg_find(0, "doom.wad", &f) == 0 || gmstg_find(0, "freedoom2.wad", &f) == 0;
+        int found = find_game_file("doom.wad", &f) >= 0 || find_game_file("freedoom2.wad", &f) >= 0;
         title("Doom");
-        screen_write(8, 8, found ? "Game data found on Gm-Stg16 primary IDE disk." : "No doom.wad or freedoom2.wad found on primary IDE disk.", text_color(0x0f));
+        screen_write(8, 8, found ? "Game data found on a primary IDE Gm-Stg16 disk." : "No doom.wad or freedoom2.wad found on primary IDE disk.", text_color(0x0f));
         screen_write(8, 10, "Doom engine is not installed and cannot be launched yet.", text_color(0x0e));
         screen_write(8, 12, "Press Esc to return.", text_color(0x07));
     }
@@ -71,8 +76,9 @@ void game_main(void) {
         if (state.page == HUB_CXG && old_page != HUB_CXG) {
             gmstg_file file;
             cxg_status = -1;
-            if (!gmstg_find(0, "game.cxg.meta", &file) &&
-                !cxg_load(0, &file, (uint8_t *)CXG_LOAD_ADDRESS, CXG_MAX_CODE)) {
+            int drive = find_game_file("game.cxg.meta", &file);
+            if (drive >= 0 &&
+                !cxg_load(drive, &file, (uint8_t *)CXG_LOAD_ADDRESS, CXG_MAX_CODE)) {
                 cxg_api api = { 1, screen_clear, screen_put, screen_write, keyboard_poll };
                 ((cxg_entry)CXG_LOAD_ADDRESS)(&api);
                 cxg_status = 0;

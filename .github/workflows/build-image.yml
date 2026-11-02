@@ -29,6 +29,10 @@ jobs:
           make test iso RUST=1 VIDEO=text GAME_SRC=tests/storage_boot.c
           python3 tests/test_boot.py build/game.img
           python3 tests/test_boot.py build/game.iso
+      - name: Test QEMU default hard disk attachment
+        run: |
+          make all RUST=1 VIDEO=text GAME_SRC=tests/harddisk_boot.c
+          python3 tests/test_harddisk_boot.py build/game.img
       - name: Test packaged game execution in QEMU
         run: |
           make sample-cxg RUST=1
@@ -36,19 +40,29 @@ jobs:
           make iso RUST=1 VIDEO=text GAME_SRC=tests/package_boot.c
           python3 tests/test_boot.py build/game.img CXG
           python3 tests/test_boot.py build/game.iso CXG
+          python3 tests/test_harddisk_boot.py build/game.img CXG build/storage-test.img
       - name: Test graphics demo
         run: make test RUST=1 VIDEO=graphics GAME_SRC=games/triangle.c
       - name: Build game hub
         run: make test iso RUST=1 VIDEO=text GAME_SRC=games/hub.c
+      - name: Record image checksums
+        run: |
+          cd build
+          sha256sum game.img > game.img.sha256
+          sha256sum game.iso > game.iso.sha256
       - name: Upload IMG
         uses: actions/upload-artifact@v4
         with:
           name: GameOnBareMetal-IMG
-          path: build/game.img
+          path: |
+            build/game.img
+            build/game.img.sha256
           if-no-files-found: error
       - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
           name: GameOnBareMetal-ISO
-          path: build/game.iso
+          path: |
+            build/game.iso
+            build/game.iso.sha256
           if-no-files-found: error

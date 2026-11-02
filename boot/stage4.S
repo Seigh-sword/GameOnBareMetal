@@ -1,4 +1,4 @@
-/* Stage 4: load the kernel from floppy and enter protected mode. */
+/* Stage 4: load the kernel using floppy CHS or hard-disk EDD LBA. */
 .code16
 .section .text
 .global _start
@@ -10,7 +10,21 @@ _start:
     movb $0, head
     movb $10, sector
     movw $1024, remaining
+    testb $0x80, drive
+    jz read_next
+    /* Hard disks have different CHS geometry; require INT 13h extensions. */
+    movw $0x55aa, %bx
+    movb $0x41, %ah
+    movb drive, %dl
+    int $0x13
+    jc edd_error
+    cmpw $0xaa55, %bx
+    jne edd_error
+    testw $1, %cx
+    jz edd_error
 read_next:
+    testb $0x80, drive
+    jnz read_lba
     xorw %bx, %bx
     movw $0x0201, %ax
     movb cylinder, %ch
@@ -19,9 +33,23 @@ read_next:
     movb drive, %dl
     int $0x13
     jc disk_error
+    jmp read_done
+read_lba:
+    movw %es, %ax
+    movw %ax, dap_segment
+    movw $1, dap_count
+    movw $disk_packet, %si
+    movb drive, %dl
+    movb $0x42, %ah
+    int $0x13
+    jc disk_error
+    incl dap_lba
+read_done:
     movw %es, %ax
     addw $0x20, %ax              /* Advance 512 bytes without segment wrap. */
     movw %ax, %es
+    testb $0x80, drive
+    jnz next
     incb sector
     cmpb $19, sector
     jb next
@@ -39,6 +67,9 @@ next:
     orl $3, %eax
     movl %eax, %cr0
     ljmpl $0x08, $protected
+edd_error:
+    movw $edd_message, %si
+    jmp print_error
 disk_error:
     movw $disk_message, %si
 print_error:
@@ -57,6 +88,14 @@ cylinder: .byte 0
 head: .byte 0
 sector: .byte 0
 remaining: .word 0
+.align 4
+disk_packet:
+    .byte 0x10, 0
+dap_count: .word 1
+    .word 0
+dap_segment: .word 0x1000
+dap_lba: .quad 9
+edd_message: .asciz "Hard disk BIOS extensions unavailable"
 disk_message: .asciz "Kernel disk read error"
 .align 8
 gdt:
