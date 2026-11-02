@@ -11,47 +11,36 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: game-hub
-            video: text
-            source: games/hub.c
-          - name: triangle-demo
-            video: graphics
-            source: games/triangle.c
     steps:
       - uses: actions/checkout@v4
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y build-essential binutils gcc-multilib python3 xorriso qemu-system-x86
-      - name: Test boot and GmStg disk driver
+      - name: Install Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-unknown-linux-gnu
+      - name: Test boot and Rust-backed GmStg disk driver
         run: |
           mkdir -p build
           python3 tools/gmstg.py create build/storage-test.img
           printf HELLO > build/test.wad
           python3 tools/gmstg.py put build/storage-test.img build/test.wad
-          make test iso VIDEO=text GAME_SRC=tests/storage_boot.c
+          make test iso RUST=1 VIDEO=text GAME_SRC=tests/storage_boot.c
           python3 tests/test_boot.py build/game.img
           python3 tests/test_boot.py build/game.iso
-      - name: Build and check demo
-        run: make test iso VIDEO=${{ matrix.video }} GAME_SRC=${{ matrix.source }}
-      - name: Upload bootable images
+      - name: Test graphics demo
+        run: make test RUST=1 VIDEO=graphics GAME_SRC=games/triangle.c
+      - name: Build game hub
+        run: make test iso RUST=1 VIDEO=text GAME_SRC=games/hub.c
+      - name: Upload IMG
         uses: actions/upload-artifact@v4
         with:
-          name: GameOnBareMetal-${{ matrix.name }}
-          path: |
-            build/game.img
-            build/game.iso
+          name: GameOnBareMetal-IMG
+          path: build/game.img
           if-no-files-found: error
-      - name: Package empty GmStg disk
-        if: matrix.name == 'game-hub'
-        run: |
-          python3 tools/gmstg.py create build/gammie-storage.img
-          tar --sparse -C build -cf build/gammie-storage.tar gammie-storage.img
-      - name: Upload empty GmStg disk
-        if: matrix.name == 'game-hub'
+      - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: GammieStorage-4096MiB
-          path: build/gammie-storage.tar
+          name: GameOnBareMetal-ISO
+          path: build/game.iso
           if-no-files-found: error

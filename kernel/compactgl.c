@@ -35,3 +35,21 @@ int cgl_triangle(const cgl_surface *s, const cgl_vertex v[3], uint8_t color) {
     }
     return 0;
 }
+
+/* Explicit nearest-neighbor texture transfer with bounds validation. */
+int cgl_blit(const cgl_surface *s, const cgl_texture *t,
+             unsigned x, unsigned y, unsigned width, unsigned height) {
+    if (!valid(s) || !t || !t->pixels || !t->width || !t->height ||
+        t->width > 4096 || t->height > 4096 || t->stride < t->width ||
+        (size_t)t->stride > t->length / t->height || !width || !height ||
+        x >= s->width || y >= s->height || width > s->width-x || height > s->height-y)
+        return -1;
+    for (unsigned row=0; row<height; ++row) {
+        unsigned ty = row * t->height / height;
+        for (unsigned col=0; col<width; ++col) {
+            unsigned tx = col * t->width / width;
+            s->pixels[(size_t)(y+row)*s->stride+x+col] = t->pixels[(size_t)ty*t->stride+tx];
+        }
+    }
+    return 0;
+}

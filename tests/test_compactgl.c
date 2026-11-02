@@ -10,6 +10,14 @@ int main(void) {
     assert(cgl_triangle(&s, tri, 224) == 0);
     assert(buffer[1+100*320+160] == 224 && buffer[1] == 3);
     assert(buffer[0] == 0 && buffer[sizeof(buffer)-1] == 0);
+    const unsigned char texels[] = { 10, 20, 30, 40 };
+    cgl_texture texture = { texels, sizeof(texels), 2, 2, 2 };
+    assert(cgl_blit(&s, &texture, 0, 0, 4, 4) == 0);
+    assert(buffer[1] == 10 && buffer[1+3] == 20);
+    assert(buffer[1+3*320] == 30 && buffer[1+3*320+3] == 40);
+    assert(cgl_blit(&s, &texture, 319, 199, 2, 2) == -1);
+    texture.length = 3;
+    assert(cgl_blit(&s, &texture, 0, 0, 2, 2) == -1);
     tri[0].x = -1;
     assert(cgl_triangle(&s, tri, 1) == -1);
     s.length--;

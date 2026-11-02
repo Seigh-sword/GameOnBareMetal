@@ -13,5 +13,13 @@ typedef struct { int x, y; } cgl_vertex;
 /* Returns -1 for invalid inputs, 0 on success. No hidden global state.
    The caller owns the surface and must synchronize overlapping access. */
 int cgl_clear(const cgl_surface *surface, uint8_t color);
+/* Nearest-neighbor 8-bit RGB332 texture. Texture pixels and target must not overlap. */
+typedef struct {
+    const uint8_t *pixels;
+    size_t length;
+    unsigned width, height, stride;
+} cgl_texture;
+int cgl_blit(const cgl_surface *surface, const cgl_texture *texture,
+             unsigned x, unsigned y, unsigned width, unsigned height);
 int cgl_triangle(const cgl_surface *surface, const cgl_vertex vertices[3], uint8_t color);
 #endif

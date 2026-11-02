@@ -30,8 +30,15 @@ static int read_sector(int drive, uint32_t lba, uint8_t *buffer) {
     }
     return -1;
 }
+#ifdef USE_RUST
+extern uint32_t gmstg_rust_u32(uint8_t, uint8_t, uint8_t, uint8_t);
+#endif
 static uint32_t u32(const uint8_t *p) {
+#ifdef USE_RUST
+    return gmstg_rust_u32(p[0], p[1], p[2], p[3]);
+#else
     return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);
+#endif
 }
 int gmstg_find(int drive, const char *name, gmstg_file *file) {
     uint8_t sector[512];
