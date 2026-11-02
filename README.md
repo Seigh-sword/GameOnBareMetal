@@ -1,10 +1,10 @@
 # GameOnBareMetal
 
-A small starting point for making a game that boots directly from one disk image. The image contains a BIOS bootloader, a tiny 32-bit x86 runtime, and one game linked together. The included demo displays a message and lets you move `@` with the arrow keys or WASD.
+A small starting point for making a game that boots directly from one disk image. The image contains a BIOS bootloader, a tiny 32-bit x86 runtime, and one game linked together. The default image opens a game hub with Play, Settings, and Mode pages. Use arrows (or W/S), Enter, and Esc. The hub is a boot menu running after the machine BIOS, not a replacement BIOS. Doom is listed but cannot be launched yet.
 
 ## Build on GitHub (no local build required)
 
-The **Build bootable image** GitHub Actions workflow runs on pushes and pull requests. You can also start it manually from the repository's **Actions** tab: select the workflow, choose **Run workflow**, and select a branch. When the run succeeds, download the `GameOnBareMetal-image` artifact from the run page and extract `game.img` from the ZIP. To build your own game, add or edit its C source in the repository and change the `GAME_SRC` setting in the workflow's build command (for example, `make test GAME_SRC=games/my_game.c`). GitHub Actions must be enabled for the repository.
+The **Build bootable image** GitHub Actions workflow runs on pushes and pull requests. You can also start it manually from the repository's **Actions** tab: select the workflow, choose **Run workflow**, and select a branch. When the run succeeds, download either the `GameOnBareMetal-game-hub` or `GameOnBareMetal-triangle-demo` artifact from the run page. Each contains `game.img` and `game.iso`. The `GammieStorage-4096MiB` artifact contains an empty GmStg disk in a sparse tar archive. To build your own game, add or edit its C source in the repository and change the `GAME_SRC` setting in the workflow's build command (for example, `make test GAME_SRC=games/my_game.c`). GitHub Actions must be enabled for the repository.
 
 ## Build and run locally
 
@@ -15,7 +15,7 @@ make test              # builds build/game.img and checks its layout
 make run               # boots it as a floppy in qemu-system-i386
 ```
 
-`build/game.img` is the complete, raw 1.44 MB floppy image. For other emulators, select a **legacy BIOS** machine and attach it as a floppy. This is not an ISO or a UEFI boot image; don't write it to a physical disk unless you understand that doing so destroys its contents. The image has no filesystem: the game is built into the kernel, not loaded from a separate file.
+`build/game.img` is the complete, raw 1.44 MB floppy image. Run `make iso` (requires `xorriso`) to also create `build/game.iso`, a BIOS El Torito floppy-emulation CD image containing that same boot image. For other emulators, select a **legacy BIOS** machine and attach the IMG as a floppy or the ISO as a CD. Neither is a UEFI boot image; don't write it to a physical disk unless you understand that doing so destroys its contents. The image has no filesystem: the game is built into the kernel, not loaded from a separate file.
 
 ## Make a game
 
@@ -25,8 +25,43 @@ Write a freestanding C file that includes `game.h` and implements `void game_mai
 make GAME_SRC=path/to/my_game.c
 ```
 
-The resulting image is still `build/game.img`. The API provides an 80×25 colored VGA text screen and nonblocking raw PS/2 keyboard scancodes. Returning from `game_main` halts the machine. There is no standard library, allocator, filesystem, sound, timing, multitasking, or process isolation; game code runs with full machine privileges. The bootloader reads 64 sectors, so the kernel, game, and static memory are limited to 32 KiB combined.
+The resulting image is still `build/game.img`. The API provides an 80×25 colored VGA text screen and nonblocking raw PS/2 keyboard scancodes. Returning from `game_main` halts the machine. There is no standard library, allocator, filesystem, sound, timing, multitasking, or process isolation; game code runs with full machine privileges. The two-stage loader reads up to 512 KiB into conventional memory; kernel code, game code and static data (including BSS) must fit in that combined budget. Stage 2 checks for at least 604 KiB of conventional memory and reserves the remainder below 0x97000 for the stack. It does not yet discover or use extended RAM above 1 MiB.
+
+## Game hub status
+
+The hub is the default image. Play lists Doom and checks the primary IDE GmStg disk for `doom.wad` or `freedoom2.wad`, but no Doom engine is installed. Settings reports the fixed text resolution and driver status; changing resolution and updating or repairing drivers are not implemented. Mode is a placeholder, with no switchable modes yet. The old text demo is still available using `make GAME_SRC=games/demo.c`.
+
+## Experimental software graphics
+
+The triangle demo boots in BIOS VGA mode 13h (320×200, 256 colors) and uses a tiny software rasterizer:
+
+```sh
+make test VIDEO=graphics GAME_SRC=games/triangle.c
+make run VIDEO=graphics GAME_SRC=games/triangle.c
+```
+
+The workflow also builds this demo as a separate artifact. `graphics_init` configures a 3:3:2 RGB palette; the caller supplies an explicit framebuffer surface to CompactGL. `compactgl.h` exposes two operations: clear and draw a flat-colored triangle in integer pixel coordinates. Surfaces are bounds-checked; vertices must be inside the surface. The API has no global render state, but callers must synchronize concurrent access to a shared surface. The kernel itself has no threads or multicore scheduler.
+
+CompactGL is an early experiment inspired by lightweight explicit graphics APIs. It is **not OpenGL ES or Vulkan compatible** and does not run OpenGL ES games. It has no GPU driver, shaders, textures, depth buffer, clipping, blending, command queues, or double buffering. Text-mode screen functions do not work in graphics mode. Modern game ports require substantially more graphics, memory and OS infrastructure.
+
+## GammieStorage (GmStg-4098 v1)
+
+GmStg-4098 is the format name; its capacity is **4096 MiB (4 GiB)**. It is a separate raw disk image with a small read-only bare-metal ATA PIO driver. It is not an existing filesystem, and it is not embedded in the boot IMG/ISO. The driver supports only primary IDE master/slave in legacy mode, LBA28 reads, at most 64 files, and one 512-byte sector at a time. It does not support SATA AHCI, USB, writes, directories, partition tables, or hot-plug. It is groundwork for loading game data, not a Doom driver or a working Doom port.
+
+To get the empty disk without building it yourself, download the `GammieStorage-4096MiB` Actions artifact and unpack its sparse tar archive with GNU tar. The disk has a 4 GiB logical size; filesystems without sparse-file support may require the full 4 GiB of free space. Alternatively create and fill it with Python:
+
+```sh
+python3 tools/gmstg.py create gammie-storage.img
+python3 tools/gmstg.py put gammie-storage.img path/to/your.wad --name doom.wad
+python3 tools/gmstg.py list gammie-storage.img
+```
+
+The image must be raw, exactly 4 GiB, and attached to the **primary IDE master** to use `gmstg_find(0, ...)`. A game can use `gmstg_read_sector` to access its file data; see `include/gmstg.h` and `tests/storage_boot.c`. For example, with QEMU add `-drive file=gammie-storage.img,format=raw,if=ide,index=0` alongside the boot floppy or CD. Keep backups: the format has no journaling or crash recovery. Only add data you have the right to use; no Doom WAD is included.
+
+## Doom roadmap
+
+Doom is not included and cannot run yet. It needs a port of its engine and a compatible runtime, much more usable memory than the current 512 KiB static limit, input and timing, and game data (a separately licensed WAD). GmStg provides an initial way to read data but does not yet integrate with Doom. Software graphics is a first step, not an OpenGL requirement for classic Doom. A future port would need a larger image/loading design and a freestanding platform layer before it can boot.
 
 ## About other languages and graphics
 
-This is a prototype, **not** a Vulkan or OpenGL runner. Those APIs require substantial GPU drivers, graphics infrastructure and hardware support that this project does not yet have. It cannot run arbitrary existing games or ordinary C executables. Code must target freestanding 32-bit x86, avoid dependencies on an OS or unavailable runtime services, and be linked into the image. Rust or C++ could eventually be used with a suitable freestanding toolchain and C-compatible entry point, but the supplied build currently supports C only. Real hardware compatibility is not guaranteed.
+This is a prototype, **not** a Vulkan or full OpenGL runner. Those APIs require substantial GPU drivers, graphics infrastructure and hardware support that this project does not yet have. It cannot run arbitrary existing games or ordinary C executables. Code must target freestanding 32-bit x86, avoid dependencies on an OS or unavailable runtime services, and be linked into the image. Rust or C++ could eventually be used with a suitable freestanding toolchain and C-compatible entry point, but the supplied build currently supports C only. Real hardware compatibility is not guaranteed.

@@ -7,6 +7,6 @@ SECTIONS {
   __bss_start = .;
   .bss : { *(.bss*) *(COMMON) }
   __bss_end = .;
-  ASSERT(__bss_end <= 0x18000, "Kernel and game memory exceed 32 KiB")
+  ASSERT(__bss_end <= 0x90000, "Kernel and game static memory exceed 512 KiB")
   /DISCARD/ : { *(.eh_frame*) *(.comment*) *(.note*) }
 }

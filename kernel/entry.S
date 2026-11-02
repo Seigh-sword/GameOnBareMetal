@@ -6,6 +6,7 @@
 .extern __bss_end
 _start:
     cld
+    fninit
     xorl %eax, %eax
     movl $__bss_start, %edi
     movl $__bss_end, %ecx
