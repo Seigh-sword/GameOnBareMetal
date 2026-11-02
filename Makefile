@@ -34,6 +34,14 @@ $(BUILD)/stage2.o: boot/stage2.S FORCE | $(BUILD)
 	$(AS) --32 --defsym VGA_GRAPHICS=$(VIDEO_FLAG) $< -o $@
 $(BUILD)/stage2.bin: $(BUILD)/stage2.o
 	$(LD) -m elf_i386 -Ttext 0x8000 --oformat binary -o $@ $<
+$(BUILD)/stage3.o: boot/stage3.S | $(BUILD)
+	$(AS) --32 $< -o $@
+$(BUILD)/stage3.bin: $(BUILD)/stage3.o
+	$(LD) -m elf_i386 -Ttext 0x8800 --oformat binary -o $@ $<
+$(BUILD)/stage4.o: boot/stage4.S | $(BUILD)
+	$(AS) --32 $< -o $@
+$(BUILD)/stage4.bin: $(BUILD)/stage4.o
+	$(LD) -m elf_i386 -Ttext 0x8c00 --oformat binary -o $@ $<
 $(BUILD)/entry.o: kernel/entry.S | $(BUILD)
 	$(AS) --32 $< -o $@
 $(BUILD)/runtime.o: kernel/runtime.c include/game.h | $(BUILD)
@@ -57,8 +65,8 @@ $(BUILD)/kernel.elf: $(BUILD)/entry.o $(BUILD)/runtime.o $(BUILD)/compactgl.o $(
 	$(LD) -m elf_i386 -T kernel/linker.ld -o $@ $(BUILD)/entry.o $(BUILD)/runtime.o $(BUILD)/compactgl.o $(BUILD)/graphics.o $(BUILD)/gmstg.o $(BUILD)/cxg.o $(BUILD)/hub.o $(BUILD)/game.o $(RUST_OBJECT)
 $(BUILD)/kernel.bin: $(BUILD)/kernel.elf
 	$(OBJCOPY) -O binary $< $@
-$(BUILD)/game.img: $(BUILD)/boot.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin
-	python3 tools/make_image.py $(BUILD)/boot.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin $@
+$(BUILD)/game.img: $(BUILD)/boot.bin $(BUILD)/stage2.bin $(BUILD)/stage3.bin $(BUILD)/stage4.bin $(BUILD)/kernel.bin
+	python3 tools/make_image.py $(BUILD)/boot.bin $(BUILD)/stage2.bin $(BUILD)/stage3.bin $(BUILD)/stage4.bin $(BUILD)/kernel.bin $@
 $(BUILD)/sample_cxg.o: games/sample_cxg.c include/cxg_api.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(BUILD)/sample_cxg.elf: $(BUILD)/sample_cxg.o kernel/cxg_game.ld

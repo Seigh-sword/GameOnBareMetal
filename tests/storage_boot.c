@@ -12,6 +12,8 @@ void game_main(void) {
         gmstg_find(0, "test.wad", &f) || f.size != 5 ||
         gmstg_read_sector(0, &f, 0, buf) || buf[0]!='H' || buf[4]!='O' ||
         gmstg_read_sector(0, &f, 1, buf) == 0 ||
+        gmstg_find(0, "high.wad", &f) || f.size != 4 ||
+        gmstg_read_sector(0, &f, 0, buf) || buf[0]!='H' || buf[3]!='H' ||
         gmstg_find(0, "missing", &f) == 0) say("STORAGE FAIL\n");
     else say("STORAGE PASS\n");
     for (;;) __asm__ volatile ("hlt");

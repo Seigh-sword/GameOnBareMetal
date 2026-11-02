@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Create and populate a GmStg-4098 v1 disk image (4096 MiB logical size)."""
+"""Create and populate a Gm-Stg16 v1 disk image (16 GiB logical size)."""
 import argparse
 import os
 import pathlib
 import struct
 import sys
 
-MAGIC = b'GMSTG001'
-CAPACITY = 4096 * 1024 * 1024
+MAGIC = b'GMSTG016'
+CAPACITY = 16 * 1024 * 1024 * 1024
+OLD_MAGIC = b'GMSTG001'
+OLD_CAPACITY = 4 * 1024 * 1024 * 1024
 SECTOR = 512
 MAX_FILES = 64
 HEADER = struct.Struct('<8sQI')
@@ -19,15 +21,15 @@ def align(n):
     return (n + SECTOR - 1) // SECTOR * SECTOR
 
 
-def directory(f):
+def directory(f, expected_magic=MAGIC, expected_capacity=CAPACITY):
     f.seek(0)
     raw = f.read(SECTOR)
     if len(raw) != SECTOR:
         raise ValueError('truncated header')
     magic, capacity, count = HEADER.unpack_from(raw)
-    if magic != MAGIC or capacity != CAPACITY or count > MAX_FILES:
-        raise ValueError('invalid GmStg-4098 header')
-    if os.fstat(f.fileno()).st_size != CAPACITY:
+    if magic != expected_magic or capacity != expected_capacity or count > MAX_FILES:
+        raise ValueError('invalid Gm-Stg header')
+    if os.fstat(f.fileno()).st_size != expected_capacity:
         raise ValueError('incorrect image size')
     result = []
     for _ in range(count):
@@ -36,7 +38,7 @@ def directory(f):
             raise ValueError('truncated directory')
         name, offset, size = ENTRY.unpack(raw)
         name = name.split(b'\0', 1)[0].decode('ascii')
-        if not name or offset < DATA_START or offset % SECTOR or offset + size > capacity:
+        if not name or offset < DATA_START or offset % SECTOR or offset >= capacity or offset + size > capacity:
             raise ValueError('invalid directory entry')
         result.append((name, offset, size))
     extents = sorted((offset, offset + size) for _, offset, size in result if size)
@@ -63,7 +65,7 @@ def put(image, source, name):
             raise ValueError('directory full or name already exists')
         size = os.fstat(src.fileno()).st_size
         offset = align(max((off + length for _, off, length in entries), default=DATA_START))
-        if size > 0xffffffff or offset + size > CAPACITY:
+        if size > 0xffffffff or offset >= CAPACITY or offset + size > CAPACITY:
             raise ValueError('file does not fit')
         f.seek(offset)
         remaining = size
@@ -81,16 +83,41 @@ def put(image, source, name):
         f.write(struct.pack('<I', len(entries) + 1))
 
 
+
+def migrate(old_path, new_path):
+    """Copy named file contents from a 4 GiB v1 image to a new 16 GiB image."""
+    with open(old_path, 'rb') as old:
+        entries = directory(old, OLD_MAGIC, OLD_CAPACITY)
+        create(new_path)  # exclusive: never overwrite the source or an existing disk
+        with open(new_path, 'r+b') as new:
+            next_offset = DATA_START
+            for index, (name, off, size) in enumerate(entries):
+                if size > 0xffffffff:
+                    raise ValueError('old file exceeds supported size')
+                next_offset = align(next_offset)
+                old.seek(off); new.seek(next_offset)
+                remaining = size
+                while remaining:
+                    chunk = old.read(min(1024 * 1024, remaining))
+                    if not chunk: raise ValueError('truncated source disk')
+                    new.write(chunk); remaining -= len(chunk)
+                new.seek(SECTOR + index * ENTRY.size)
+                new.write(ENTRY.pack(name.encode('ascii'), next_offset, size))
+                next_offset += size
+            new.seek(16); new.write(struct.pack('<I', len(entries)))
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('create'); p.add_argument('image')
     p = sub.add_parser('put'); p.add_argument('image'); p.add_argument('file'); p.add_argument('--name')
     p = sub.add_parser('list'); p.add_argument('image')
+    p = sub.add_parser('migrate'); p.add_argument('old_image'); p.add_argument('new_image')
     args = parser.parse_args()
     try:
         if args.command == 'create': create(args.image)
         elif args.command == 'put': put(args.image, args.file, args.name or pathlib.Path(args.file).name)
+        elif args.command == 'migrate': migrate(args.old_image, args.new_image)
         else:
             with open(args.image, 'rb') as f:
                 for name, offset, size in directory(f): print(f'{name}\t{size} bytes\t@ {offset}')

@@ -13,6 +13,13 @@ void hub_step(hub_state *s, hub_action action) {
             s->page = s->selected == 0 ? HUB_PLAY : s->selected == 1 ? HUB_SETTINGS : HUB_MODE;
             s->selected = 0;
         }
+    } else if (s->page == HUB_MODE) {
+        if (action == HUB_UP || action == HUB_DOWN) s->selected ^= 1;
+        if (action == HUB_ENTER) {
+            s->contrast = s->selected;
+            s->page = HUB_HOME;
+            s->selected = 0;
+        }
     } else if (s->page == HUB_PLAY) {
         if (action == HUB_UP || action == HUB_DOWN) s->selected ^= 1;
         if (action == HUB_ENTER) {

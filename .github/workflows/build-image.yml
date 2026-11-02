@@ -25,6 +25,7 @@ jobs:
           python3 tools/gmstg.py create build/storage-test.img
           printf HELLO > build/test.wad
           python3 tools/gmstg.py put build/storage-test.img build/test.wad
+          python3 tests/add_high_entry.py build/storage-test.img
           make test iso RUST=1 VIDEO=text GAME_SRC=tests/storage_boot.c
           python3 tests/test_boot.py build/game.img
           python3 tests/test_boot.py build/game.iso

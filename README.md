@@ -25,11 +25,11 @@ Write a freestanding C file that includes `game.h` and implements `void game_mai
 make GAME_SRC=path/to/my_game.c
 ```
 
-The resulting image is still `build/game.img`. The API provides an 80×25 colored VGA text screen and nonblocking raw PS/2 keyboard scancodes. Returning from `game_main` halts the machine. There is no standard library, allocator, filesystem, sound, timing, multitasking, or process isolation; game code runs with full machine privileges. The two-stage loader reads up to 512 KiB into conventional memory. Kernel code and static data (including BSS) must fit in the 256 KiB region below 0x50000; the next 192 KiB is reserved for loaded CXG game code. Stage 2 checks for at least 604 KiB of conventional memory and reserves the remainder below 0x97000 for the stack. It does not yet discover or use extended RAM above 1 MiB.
+The resulting image is still `build/game.img`. The API provides an 80×25 colored VGA text screen and nonblocking raw PS/2 keyboard scancodes. Returning from `game_main` halts the machine. There is no standard library, allocator, filesystem, sound, timing, multitasking, or process isolation; game code runs with full machine privileges. The four-stage loader reads up to 512 KiB into conventional memory. Stage 1 loads stage 2; stage 2 checks conventional memory and configures video; stage 3 enables and checks A20; stage 4 loads the kernel and enters 32-bit protected mode. Kernel code and static data (including BSS) must fit in the 256 KiB region below 0x50000; the next 192 KiB is reserved for loaded CXG game code. Stage 2 checks for at least 604 KiB of conventional memory and reserves the remainder below 0x97000 for the stack. It does not yet discover or use extended RAM above 1 MiB.
 
 ## Game hub status
 
-The hub is the default image. Play lists Doom and checks the primary IDE GmStg disk for `doom.wad` or `freedoom2.wad`, but no Doom engine is installed. A second Play entry launches an ABI-compatible `game.cxg.meta` on that disk. Settings reports the fixed text resolution and driver status; changing resolution and updating or repairing drivers are not implemented. Mode is a placeholder, with no switchable modes yet. The old text demo is still available using `make GAME_SRC=games/demo.c`.
+The hub is the default image. Play lists Doom and checks the primary IDE Gm-Stg16 disk for `doom.wad` or `freedoom2.wad`, but no Doom engine is installed. A second Play entry launches an ABI-compatible `game.cxg.meta` on that disk. Settings reports the fixed text resolution and driver status; changing resolution and updating or repairing drivers are not implemented. Mode switches between standard and high-contrast hub colors for the current session (not persisted). The old text demo is still available using `make GAME_SRC=games/demo.c`.
 
 ## Experimental software graphics
 
@@ -48,7 +48,7 @@ CompactGL is an early experiment inspired by lightweight explicit graphics APIs.
 
 A `.cxg.meta` is a versioned, indexed container, not a renamed ZIP. It contains files under `_METADATA`, `_HEADERS`, `_LIBS`, `_DEPS`, and `_ASSETS`. The required `_HEADERS/game.cxg` is the raw executable. Entries are individually compressed with a small custom LZ77-style literal/back-reference codec and carry CRC32 checksums. This is a simple first codec, **not guaranteed to compress as well as ZIP or modern compressors**; incompressible inputs can grow. The host tool validates paths, sizes and checksums before extracting.
 
-Build the example, create a 4 GiB sparse GmStg disk, and add the package:
+Build the example, create a 16 GiB sparse Gm-Stg16 disk, and add the package:
 
 ```sh
 make all sample-cxg
@@ -70,11 +70,11 @@ python3 tools/cxg.py pack --executable mygame.bin --output game.cxg.meta \
 
 Each folder option is optional. `games/sample_cxg.c`, `kernel/cxg_game.ld`, and `include/cxg_api.h` define the current ABI. CXG v1 requires 32-bit x86 cdecl code linked at `0x50000`, an entry function in `.text.entry`, no BSS, no unresolved symbols or OS dependencies, and at most 192 KiB of code/data. The entry receives an API table (version, VGA text and keyboard functions) and returns to the hub. A random `.bin` or compiled desktop game will **not** work. This is not a dynamic linker: `_LIBS` and `_DEPS` are packaged data only. The kernel currently extracts **only the executable into RAM**; it cannot yet install assets as files or expose them to games. Host extraction writes all entries to a new destination directory. Both the kernel and games run with full machine privileges, with no isolation or signature verification: **only load packages you trust**. CRC detects accidental corruption, not malicious code.
 
-## GammieStorage (GmStg-4098 v1)
+## Gm-Stg16 disk
 
-GmStg-4098 is the format name; its capacity is **4096 MiB (4 GiB)**. It is a separate raw disk image with a small read-only bare-metal ATA PIO driver. It is not an existing filesystem, and it is not embedded in the boot IMG/ISO. The driver supports only primary IDE master/slave in legacy mode, LBA28 reads, at most 64 files, and one 512-byte sector at a time. It does not support SATA AHCI, USB, writes, directories, partition tables, or hot-plug. It is groundwork for loading game data, not a Doom driver or a working Doom port.
+Gm-Stg16 v1 is a new format with a logical capacity of **16 GiB (16,384 MiB)**. It is a separate raw disk image with a small read-only bare-metal ATA PIO driver. It is not an existing filesystem, and it is not embedded in the boot IMG/ISO. The driver supports only primary IDE master/slave in legacy mode, LBA28 reads, at most 64 files, and one 512-byte sector at a time. It does not support SATA AHCI, USB, writes, directories, partition tables, or hot-plug. It is groundwork for loading game data, not a Doom driver or a working Doom port.
 
-The storage image is not included in either boot download. To create and fill it, use Python. The disk has a 4 GiB logical size; filesystems without sparse-file support may require the full 4 GiB of free space:
+The storage image is not included in either boot download. To create and fill it, use Python. The disk has a 16 GiB logical size; filesystems without sparse-file support may require the full 16 GiB of free space:
 
 ```sh
 python3 tools/gmstg.py create gammie-storage.img
@@ -82,7 +82,9 @@ python3 tools/gmstg.py put gammie-storage.img path/to/your.wad --name doom.wad
 python3 tools/gmstg.py list gammie-storage.img
 ```
 
-The image must be raw, exactly 4 GiB, and attached to the **primary IDE master** to use `gmstg_find(0, ...)`. A game can use `gmstg_read_sector` to access its file data; see `include/gmstg.h` and `tests/storage_boot.c`. For example, with QEMU add `-drive file=gammie-storage.img,format=raw,if=ide,index=0` alongside the boot floppy or CD. Keep backups: the format has no journaling or crash recovery. Only add data you have the right to use; no Doom WAD is included.
+The image must be raw, exactly 16 GiB, and attached to the **primary IDE master** to use `gmstg_find(0, ...)`. A game can use `gmstg_read_sector` to access its file data; see `include/gmstg.h` and `tests/storage_boot.c`. For example, with QEMU add `-drive file=gammie-storage.img,format=raw,if=ide,index=0` alongside the boot floppy or CD. Keep backups: the format has no journaling or crash recovery. Only add data you have the right to use; no Doom WAD is included. Individual files are limited to 4 GiB minus one byte.
+
+The old 4 GiB GmStg-4098 format is not directly compatible. To migrate it without changing the original, use `python3 tools/gmstg.py migrate old.img new-16g.img`. The destination must not already exist; the tool copies named files into a new sparse disk. Keep the original until you have checked the migrated copy. A failed migration may leave an incomplete destination that should not be used.
 
 ## What is a WAD?
 
@@ -90,7 +92,7 @@ A WAD ("Where's All the Data?") is a game-data archive containing things like ma
 
 ## Doom roadmap
 
-Doom is not included and cannot run yet. It needs a port of its engine and a compatible runtime, much more usable memory than the current 512 KiB static limit, input and timing, and game data (a separately licensed WAD). GmStg provides an initial way to read data but does not yet integrate with Doom. Software graphics is a first step, not an OpenGL requirement for classic Doom. A future port would need a larger image/loading design and a freestanding platform layer before it can boot.
+Doom is not included and cannot run yet. It needs a port of its engine and a compatible runtime, much more usable memory than the current 512 KiB static limit, input and timing, and game data (a separately licensed WAD). Gm-Stg16 provides an initial way to read data but does not yet integrate with Doom. Software graphics is a first step, not an OpenGL requirement for classic Doom. A future port would need a larger image/loading design and a freestanding platform layer before it can boot.
 
 ## About other languages and graphics
 

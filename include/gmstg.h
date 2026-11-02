@@ -1,7 +1,7 @@
 #ifndef GMSTG_H
 #define GMSTG_H
 #include <stdint.h>
-/* GmStg-4098 v1 on a primary IDE ATA disk, master=0 or slave=1.
+/* Gm-Stg16 v1 on a primary IDE ATA disk, master=0 or slave=1.
    Returns 0 on success, -1 for invalid disk/IO or missing file.
    Read-only; names are case-sensitive ASCII. */
 typedef struct { uint32_t first_sector; uint32_t size; } gmstg_file;

@@ -42,11 +42,11 @@ static uint32_t u32(const uint8_t *p) {
 }
 int gmstg_find(int drive, const char *name, gmstg_file *file) {
     uint8_t sector[512];
-    const char magic[]="GMSTG001";
+    const char magic[]="GMSTG016";
     if (!name || !file || read_sector(drive,0,sector)) return -1;
     for (int i=0;i<8;i++) if (sector[i]!=(uint8_t)magic[i]) return -1;
-    /* Exactly 4 GiB, encoded as a 64-bit little endian number. */
-    if (u32(sector+8)!=0 || u32(sector+12)!=1) return -1;
+    /* Exactly 16 GiB, encoded as a 64-bit little endian number. */
+    if (u32(sector+8)!=0 || u32(sector+12)!=4) return -1;
     uint32_t count=u32(sector+16);
     if (count>64) return -1;
     for (uint32_t i=0;i<count;i++) {
@@ -56,13 +56,15 @@ int gmstg_find(int drive, const char *name, gmstg_file *file) {
         while (j<48 && name[j] && (uint8_t)name[j]==e[j]) j++;
         if (j==48 || name[j] || e[j]) continue;
         uint32_t off=u32(e+48), high=u32(e+52), size=u32(e+56), size_hi=u32(e+60);
-        if (high || size_hi || off<4608 || (off&511) || (uint64_t)off + size > 0x100000000ull) return -1;
-        file->first_sector=off>>9; file->size=size; return 0;
+        uint64_t byte_offset = ((uint64_t)high << 32) | off;
+        if (size_hi || byte_offset < 4608 || (off&511) ||
+            byte_offset >= 0x400000000ull || byte_offset + size > 0x400000000ull) return -1;
+        file->first_sector=(high << 23) | (off >> 9); file->size=size; return 0;
     }
     return -1;
 }
 int gmstg_read_sector(int drive, const gmstg_file *file, uint32_t sector, void *buffer) {
     if (!file || !buffer || sector >= (file->size >> 9) + ((file->size & 511) != 0)) return -1;
-    if (file->first_sector > 0x7fffff || sector > 0x7fffff-file->first_sector) return -1;
+    if (file->first_sector > 0x1ffffff || sector > 0x1ffffff-file->first_sector) return -1;
     return read_sector(drive,file->first_sector+sector,(uint8_t *)buffer);
 }
