@@ -7,6 +7,6 @@ SECTIONS {
   __bss_start = .;
   .bss : { *(.bss*) *(COMMON) }
   __bss_end = .;
-  ASSERT(__bss_end <= 0x90000, "Kernel and game static memory exceed 512 KiB")
+  ASSERT(__bss_end <= 0x50000, "Kernel static memory overlaps CXG load area")
   /DISCARD/ : { *(.eh_frame*) *(.comment*) *(.note*) }
 }

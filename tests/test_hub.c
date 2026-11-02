@@ -8,6 +8,8 @@ int main(void) {
     hub_step(&s, HUB_ENTER); assert(s.page == HUB_PLAY);
     hub_step(&s, HUB_ENTER); assert(s.page == HUB_DOOM);
     hub_step(&s, HUB_BACK); assert(s.page == HUB_PLAY);
+    hub_step(&s, HUB_DOWN); hub_step(&s, HUB_ENTER); assert(s.page == HUB_CXG);
+    hub_step(&s, HUB_BACK); assert(s.page == HUB_PLAY);
     hub_step(&s, HUB_BACK); assert(s.page == HUB_HOME);
     hub_step(&s, HUB_DOWN); hub_step(&s, HUB_ENTER); assert(s.page == HUB_SETTINGS);
     hub_step(&s, HUB_BACK); hub_step(&s, HUB_UP); hub_step(&s, HUB_ENTER); assert(s.page == HUB_MODE);

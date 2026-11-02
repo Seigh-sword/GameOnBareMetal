@@ -28,6 +28,13 @@ jobs:
           make test iso RUST=1 VIDEO=text GAME_SRC=tests/storage_boot.c
           python3 tests/test_boot.py build/game.img
           python3 tests/test_boot.py build/game.iso
+      - name: Test packaged game execution in QEMU
+        run: |
+          make sample-cxg RUST=1
+          python3 tools/gmstg.py put build/storage-test.img build/game.cxg.meta
+          make iso RUST=1 VIDEO=text GAME_SRC=tests/package_boot.c
+          python3 tests/test_boot.py build/game.img CXG
+          python3 tests/test_boot.py build/game.iso CXG
       - name: Test graphics demo
         run: make test RUST=1 VIDEO=graphics GAME_SRC=games/triangle.c
       - name: Build game hub

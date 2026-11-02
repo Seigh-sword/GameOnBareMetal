@@ -25,11 +25,11 @@ Write a freestanding C file that includes `game.h` and implements `void game_mai
 make GAME_SRC=path/to/my_game.c
 ```
 
-The resulting image is still `build/game.img`. The API provides an 80×25 colored VGA text screen and nonblocking raw PS/2 keyboard scancodes. Returning from `game_main` halts the machine. There is no standard library, allocator, filesystem, sound, timing, multitasking, or process isolation; game code runs with full machine privileges. The two-stage loader reads up to 512 KiB into conventional memory; kernel code, game code and static data (including BSS) must fit in that combined budget. Stage 2 checks for at least 604 KiB of conventional memory and reserves the remainder below 0x97000 for the stack. It does not yet discover or use extended RAM above 1 MiB.
+The resulting image is still `build/game.img`. The API provides an 80×25 colored VGA text screen and nonblocking raw PS/2 keyboard scancodes. Returning from `game_main` halts the machine. There is no standard library, allocator, filesystem, sound, timing, multitasking, or process isolation; game code runs with full machine privileges. The two-stage loader reads up to 512 KiB into conventional memory. Kernel code and static data (including BSS) must fit in the 256 KiB region below 0x50000; the next 192 KiB is reserved for loaded CXG game code. Stage 2 checks for at least 604 KiB of conventional memory and reserves the remainder below 0x97000 for the stack. It does not yet discover or use extended RAM above 1 MiB.
 
 ## Game hub status
 
-The hub is the default image. Play lists Doom and checks the primary IDE GmStg disk for `doom.wad` or `freedoom2.wad`, but no Doom engine is installed. Settings reports the fixed text resolution and driver status; changing resolution and updating or repairing drivers are not implemented. Mode is a placeholder, with no switchable modes yet. The old text demo is still available using `make GAME_SRC=games/demo.c`.
+The hub is the default image. Play lists Doom and checks the primary IDE GmStg disk for `doom.wad` or `freedoom2.wad`, but no Doom engine is installed. A second Play entry launches an ABI-compatible `game.cxg.meta` on that disk. Settings reports the fixed text resolution and driver status; changing resolution and updating or repairing drivers are not implemented. Mode is a placeholder, with no switchable modes yet. The old text demo is still available using `make GAME_SRC=games/demo.c`.
 
 ## Experimental software graphics
 
@@ -43,6 +43,32 @@ make run VIDEO=graphics GAME_SRC=games/triangle.c
 The workflow also builds and tests this demo, but publishes the hub image only. `graphics_init` configures a 3:3:2 RGB palette; the caller supplies an explicit framebuffer surface to CompactGL. `compactgl.h` exposes clear, flat-colored triangles, and nearest-neighbor RGB332 texture blits in integer pixel coordinates. Texture and target buffers must not overlap. Surfaces are bounds-checked; vertices must be inside the surface. The API has no global render state, but callers must synchronize concurrent access to a shared surface. The kernel itself has no threads or multicore scheduler.
 
 CompactGL is an early experiment inspired by lightweight explicit graphics APIs. It is **not OpenGL ES or Vulkan compatible** and does not run OpenGL ES games. Its VGA driver and renderer are software-only; it has no modern GPU driver, shaders, filtered textures, depth buffer, clipping, blending, command queues, or double buffering. Text-mode screen functions do not work in graphics mode. Modern game ports require substantially more graphics, memory and OS infrastructure.
+
+## CXG packages
+
+A `.cxg.meta` is a versioned, indexed container, not a renamed ZIP. It contains files under `_METADATA`, `_HEADERS`, `_LIBS`, `_DEPS`, and `_ASSETS`. The required `_HEADERS/game.cxg` is the raw executable. Entries are individually compressed with a small custom LZ77-style literal/back-reference codec and carry CRC32 checksums. This is a simple first codec, **not guaranteed to compress as well as ZIP or modern compressors**; incompressible inputs can grow. The host tool validates paths, sizes and checksums before extracting.
+
+Build the example, create a 4 GiB sparse GmStg disk, and add the package:
+
+```sh
+make all sample-cxg
+python3 tools/cxg.py list build/game.cxg.meta
+python3 tools/cxg.py extract build/game.cxg.meta extracted-game
+python3 tools/gmstg.py create gammie-storage.img
+python3 tools/gmstg.py put gammie-storage.img build/game.cxg.meta
+qemu-system-i386 -drive file=build/game.img,format=raw,if=floppy -drive file=gammie-storage.img,format=raw,if=ide,index=0
+```
+
+In the hub choose **Play → Launch game.cxg.meta**. Attach the storage as primary IDE master; the loader finds that exact filename, decompresses the executable into RAM, checks its CRC32, and calls it. The sample returns after Enter. The package is not automatically installed on the disk, and the hub can currently select only this one fixed package name. Actions boot-tests an example, but the two hub image artifacts do not include a storage disk or sample package.
+
+Creators can package their own fixed-address executable and optional folders:
+
+```sh
+python3 tools/cxg.py pack --executable mygame.bin --output game.cxg.meta \
+  --metadata metadata/ --headers headers/ --libs libs/ --deps deps/ --assets assets/
+```
+
+Each folder option is optional. `games/sample_cxg.c`, `kernel/cxg_game.ld`, and `include/cxg_api.h` define the current ABI. CXG v1 requires 32-bit x86 cdecl code linked at `0x50000`, an entry function in `.text.entry`, no BSS, no unresolved symbols or OS dependencies, and at most 192 KiB of code/data. The entry receives an API table (version, VGA text and keyboard functions) and returns to the hub. A random `.bin` or compiled desktop game will **not** work. This is not a dynamic linker: `_LIBS` and `_DEPS` are packaged data only. The kernel currently extracts **only the executable into RAM**; it cannot yet install assets as files or expose them to games. Host extraction writes all entries to a new destination directory. Both the kernel and games run with full machine privileges, with no isolation or signature verification: **only load packages you trust**. CRC detects accidental corruption, not malicious code.
 
 ## GammieStorage (GmStg-4098 v1)
 

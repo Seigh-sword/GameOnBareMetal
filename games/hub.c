@@ -1,6 +1,10 @@
 #include "game.h"
 #include "gmstg.h"
 #include "hub.h"
+#include "cxg.h"
+#include "cxg_api.h"
+
+static int cxg_status;
 
 static void title(const char *page) {
     screen_clear(0x01);
@@ -21,8 +25,9 @@ static void render(const hub_state *s) {
         option(12, "Mode", s->selected == 2);
     } else if (s->page == HUB_PLAY) {
         title("Play");
-        option(8, "Doom  [not installed]", 1);
-        screen_write(8, 11, "Doom support is under development.", 0x07);
+        option(8, "Doom  [not installed]", s->selected == 0);
+        option(10, "Launch game.cxg.meta", s->selected == 1);
+        screen_write(8, 13, "Package must be on primary IDE GmStg disk.", 0x07);
     } else if (s->page == HUB_SETTINGS) {
         title("Settings");
         screen_write(8, 8, "Display: 80 x 25 text (fixed)", 0x0f);
@@ -32,6 +37,10 @@ static void render(const hub_state *s) {
         title("Mode");
         screen_write(8, 8, "Standard mode", 0x0f);
         screen_write(8, 10, "More modes are planned; no mode changes available yet.", 0x07);
+    } else if (s->page == HUB_CXG) {
+        title("Compact Executable Game");
+        screen_write(8, 8, cxg_status == 0 ? "Game returned to the hub." : "Package missing or invalid; game not started.", 0x0f);
+        screen_write(8, 10, "Press Esc to return.", 0x07);
     } else {
         gmstg_file f;
         int found = gmstg_find(0, "doom.wad", &f) == 0 || gmstg_find(0, "freedoom2.wad", &f) == 0;
@@ -52,7 +61,18 @@ void game_main(void) {
         else if (key == 0x1c) action = HUB_ENTER;
         else if (key == 0x01) action = HUB_BACK;
         else continue;
+        hub_page old_page = state.page;
         hub_step(&state, action);
+        if (state.page == HUB_CXG && old_page != HUB_CXG) {
+            gmstg_file file;
+            cxg_status = -1;
+            if (!gmstg_find(0, "game.cxg.meta", &file) &&
+                !cxg_load(0, &file, (uint8_t *)CXG_LOAD_ADDRESS, CXG_MAX_CODE)) {
+                cxg_api api = { 1, screen_clear, screen_put, screen_write, keyboard_poll };
+                ((cxg_entry)CXG_LOAD_ADDRESS)(&api);
+                cxg_status = 0;
+            }
+        }
         render(&state);
     }
 }

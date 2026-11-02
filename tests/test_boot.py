@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 boot = sys.argv[1]
+marker = (sys.argv[2] if len(sys.argv) > 2 else 'STORAGE').encode('ascii')
 if boot.endswith('.iso'):
     media = ['-cdrom', boot, '-boot', 'd']
 else:
@@ -15,6 +16,6 @@ try:
     output = result.stdout
 except subprocess.TimeoutExpired as exc:
     output = exc.stdout or b''
-if b'STORAGE PASS' not in output or b'STORAGE FAIL' in output:
+if marker + b' PASS' not in output or marker + b' FAIL' in output:
     raise SystemExit(f'Boot/storage test failed: {output!r}')
 print(f'{boot}: boot and storage driver OK')
